@@ -45,3 +45,4 @@ Bragg.plot_image_with_symmetry_line(image, line_position=symmetry_line)
 # Usage
 tiff_path = "W:\\RadOnc\\Research\\2024_flash\\Flash_film_scan\\Cali002.tif"
 sizing.analyze_radiochromic_film(tiff_path)
+# now we have the best fitting to aid us finding the center most maximum
