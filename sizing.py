@@ -61,7 +61,7 @@ def analyze_radiochromic_film(tiff_path):
         distances = np.sqrt(
             (set_b_indices[:, 1] - ellipse_center[0]) ** 2 + (set_b_indices[:, 0] - ellipse_center[1]) ** 2)
         closest_idx = np.argmin(distances)
-        closest_pixel = (set_b_indices[closest_idx][1], set_b_indices[closest_idx][0])
+        radiation_center = (set_b_indices[closest_idx][1], set_b_indices[closest_idx][0])
 
     # Plot optical density of the averaged grayscale image with the ellipse and center marked
     plt.figure(figsize=(8, 6))
@@ -77,9 +77,47 @@ def analyze_radiochromic_film(tiff_path):
         # Mark the ellipse center
         plt.plot(ellipse_center[0], ellipse_center[1], 'bo', markersize=10, label="Ellipse Center")
 
-    # Plot the closest pixel in Set B
-    if closest_pixel is not None:
-        plt.plot(closest_pixel[0], closest_pixel[1], 'go', markersize=8, label="Closest Pixel in Set B")
+    # Plot the radiation center in Set B
+    if radiation_center is not None:
+        plt.plot(radiation_center[0], radiation_center[1], 'go', markersize=8, label="Radiation Center")
+
+        # Draw vertical and horizontal lines through the radiation center
+        plt.axvline(x=radiation_center[0], color='yellow', linestyle='--', linewidth=1)
+        plt.axhline(y=radiation_center[1], color='yellow', linestyle='--', linewidth=1)
 
     plt.legend()
     plt.show()
+
+    # Step 3: Extract pixel values along the vertical and horizontal lines at the radiation center
+    if radiation_center is not None:
+        vertical_line = od_avg[:, radiation_center[0]]
+        horizontal_line = od_avg[radiation_center[1], :]
+
+        # Calculate distances from the radiation center for x-axis values
+        vertical_distances = np.arange(len(vertical_line)) - radiation_center[1]
+        horizontal_distances = np.arange(len(horizontal_line)) - radiation_center[0]
+
+        # Plot the pixel values along these lines with distance to radiation center as x-axis
+        plt.figure(figsize=(10, 5))
+        plt.plot(vertical_distances, vertical_line, label='Vertical Line', color='blue')
+        plt.plot(horizontal_distances, horizontal_line, label='Horizontal Line', color='green')
+        plt.xlabel('Distance to Radiation Center (pixels)')
+        plt.ylabel('Optical Density')
+        plt.title('Optical Density Along Vertical and Horizontal Lines at Radiation Center')
+        plt.legend()
+        plt.show()
+
+        # Step 4: Calculate the widths at 10% of max OD
+        threshold = 0.1 * max_od
+
+        # For vertical line
+        vertical_positions = np.where(vertical_line >= threshold)[0]
+        if len(vertical_positions) > 0:
+            vertical_width = vertical_positions[-1] - vertical_positions[0]
+            print(f"Vertical width at 90% max OD: {vertical_width} pixels")
+
+        # For horizontal line
+        horizontal_positions = np.where(horizontal_line >= threshold)[0]
+        if len(horizontal_positions) > 0:
+            horizontal_width = horizontal_positions[-1] - horizontal_positions[0]
+            print(f"Horizontal width at 90% max OD: {horizontal_width} pixels")
