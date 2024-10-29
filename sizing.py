@@ -29,24 +29,39 @@ def analyze_radiochromic_film(tiff_path):
     # Find the maximum OD value in the image
     max_od = np.max(od_avg)
 
-    # Create a mask for OD values within 10% of the maximum OD
-    mask = (od_avg >= 0.8 * max_od)
+    # Step 1: Identify Set A (within 20% of max OD)
+    set_a_mask = (od_avg >= 0.8 * max_od)
+    od_img_a = np.where(set_a_mask, od_avg, 0)
+    od_img_a = (od_img_a * 255).astype(np.uint8)
 
-    # Convert the masked OD to an 8-bit grayscale image for contour detection
-    od_img = (od_avg * 255).astype(np.uint8)
-    masked_od_img = np.where(mask, od_img, 0).astype(np.uint8)
+    # Apply Gaussian blur to reduce noise within Set A
+    blurred_a = cv2.GaussianBlur(od_img_a, (5, 5), 0)
 
-    # Apply Gaussian blur to reduce noise within the masked image
-    blurred = cv2.GaussianBlur(masked_od_img, (5, 5), 0)
+    # Use Canny edge detection to find edges in the Set A region
+    edges_a = cv2.Canny(blurred_a, 50, 150)
 
-    # Use Canny edge detection to find edges in the masked image
-    edges = cv2.Canny(blurred, 50, 150)
+    # Find contours in the Set A edge-detected image
+    contours_a, _ = cv2.findContours(edges_a, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Find contours in the edge-detected image
-    contours, _ = cv2.findContours(edges, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Fit an ellipse to the largest contour in Set A
+    largest_contour_a = max(contours_a, key=cv2.contourArea) if contours_a else None
+    ellipse_center = None
 
-    # Fit an ellipse to the largest contour within the masked region
-    largest_contour = max(contours, key=cv2.contourArea) if contours else None
+    if largest_contour_a is not None and len(largest_contour_a) >= 5:  # At least 5 points needed for ellipse fitting
+        ellipse = cv2.fitEllipse(largest_contour_a)
+        ellipse_center = (int(ellipse[0][0]), int(ellipse[0][1]))
+
+    # Step 2: Identify Set B (within 2% of max OD)
+    set_b_mask = (od_avg >= 0.98 * max_od)
+    set_b_indices = np.column_stack(np.where(set_b_mask))
+
+    # Find the pixel in Set B closest to the ellipse center
+    closest_pixel = None
+    if ellipse_center is not None and len(set_b_indices) > 0:
+        distances = np.sqrt(
+            (set_b_indices[:, 1] - ellipse_center[0]) ** 2 + (set_b_indices[:, 0] - ellipse_center[1]) ** 2)
+        closest_idx = np.argmin(distances)
+        closest_pixel = (set_b_indices[closest_idx][1], set_b_indices[closest_idx][0])
 
     # Plot optical density of the averaged grayscale image with the ellipse and center marked
     plt.figure(figsize=(8, 6))
@@ -54,18 +69,17 @@ def analyze_radiochromic_film(tiff_path):
     plt.title('Optical Density - Averaged Grayscale with Elliptical Mark')
     plt.axis('off')
 
-    # If a valid contour is found, fit an ellipse and mark the center
-    if largest_contour is not None and len(largest_contour) >= 5:  # Need at least 5 points for ellipse fitting
-        ellipse = cv2.fitEllipse(largest_contour)
-        center = (int(ellipse[0][0]), int(ellipse[0][1]))
-
-        # Plot the ellipse
-        ellipse_box = cv2.ellipse(np.zeros_like(od_img), ellipse, 255, 2)
+    # Plot the fitted ellipse from Set A
+    if largest_contour_a is not None and ellipse_center is not None:
+        ellipse_box = cv2.ellipse(np.zeros_like(od_img_a), ellipse, 255, 2)
         plt.contour(ellipse_box, colors='red', linewidths=0.5)
 
-        # Mark the center point
-        plt.plot(center[0], center[1], 'bo', markersize=10, label="Elliptical Center")
-        plt.legend()
+        # Mark the ellipse center
+        plt.plot(ellipse_center[0], ellipse_center[1], 'bo', markersize=10, label="Ellipse Center")
 
+    # Plot the closest pixel in Set B
+    if closest_pixel is not None:
+        plt.plot(closest_pixel[0], closest_pixel[1], 'go', markersize=8, label="Closest Pixel in Set B")
+
+    plt.legend()
     plt.show()
-
